@@ -193,7 +193,7 @@ class Resque_Worker
         $this->updateProcLine('Starting');
         $this->startup();
 
-        while (true) {
+        while (pcntl_signal_dispatch()) {
             if ($this->shutdown) {
                 break;
             }
@@ -394,7 +394,6 @@ class Resque_Worker
             return;
         }
 
-        declare(ticks = 1);
         pcntl_signal(SIGTERM, array($this, 'shutDownNow'));
         pcntl_signal(SIGINT, array($this, 'shutDownNow'));
         pcntl_signal(SIGQUIT, array($this, 'shutdown'));
