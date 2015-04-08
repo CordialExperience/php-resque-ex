@@ -125,6 +125,19 @@ class Resque
 	}
 
 	/**
+	 * Push a job to the beginning of a specific queue. If the queue does not
+	 * exist, then create it as well.
+	 *
+	 * @param string $queue The name of the queue to add the job to.
+	 * @param array $item Job description as an array to be JSON encoded.
+	 */
+	public static function unshift($queue, $item)
+	{
+		self::redis()->sadd('queues', $queue);
+		self::redis()->lpush('queue:' . $queue, json_encode($item));
+	}
+
+	/**
 	 * Pop an item off the end of the specified queue, decode it and
 	 * return it.
 	 *
@@ -163,10 +176,10 @@ class Resque
 	 *
 	 * @return string
 	 */
-	public static function enqueue($queue, $class, $args = null, $trackStatus = false)
+	public static function enqueue($queue, $class, $args = null, $trackStatus = false, $runFirst = false)
 	{
 		require_once dirname(__FILE__) . '/Resque/Job.php';
-		$result = Resque_Job::create($queue, $class, $args, $trackStatus);
+		$result = Resque_Job::create($queue, $class, $args, $trackStatus, $runFirst);
 		if ($result) {
 			Resque_Event::trigger('afterEnqueue', array(
 				'class' => $class,

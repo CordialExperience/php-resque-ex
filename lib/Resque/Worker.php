@@ -239,6 +239,7 @@ class Resque_Worker
                 $this->updateProcLine($status);
                 $this->log(array('message' => $status, 'data' => array('type' => 'process', 'worker' => $workerName, 'job_id' => $job->payload['id'])), self::LOG_TYPE_INFO);
                 $this->perform($job);
+                pcntl_signal_dispatch();
                 if ($this->child === 0) {
                     exit(0);
                 }
