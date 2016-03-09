@@ -43,7 +43,9 @@ class Resque
 	 * @var int PID of current process. Used to detect changes when forking
 	 *  and implement "thread" safety to avoid race conditions.
 	 */
-	 protected static $pid = null;
+	protected static $pid = null;
+
+    protected static $queueType;
 
 	/**
 	 * Given a host/port combination separated by a colon, set it as
@@ -61,6 +63,27 @@ class Resque
 		self::$namespace 	 = $namespace;
 		self::$password 	 = $password;
 	}
+
+    public static function setQueueType($type=null)
+    {
+        if (empty($type)) {
+            self::$queueType = 'Resque_Queue_Redis';
+        } elseif (class_exists('Resque_Queue_' . $type) && 'Resque_Queue_' . $type instanceof Resque_Queue_Interface) {
+            self::$queueType = 'Resque_Queue_' . $type;
+        } elseif (class_exists($type) && $type instanceof Resque_Queue_Interface) {
+            self::$queueType = $type;
+        } else {
+            throw new \Exception('QueueType not valid');
+        }
+    }
+
+    public static function queue()
+    {
+        if (empty(self::$queueType)) {
+            self::setQueueType();
+        }
+        return self::$queueType;
+    }
 
 	/**
 	 * Return an instance of the Resque_Redis class instantiated for Resque.
@@ -118,10 +141,26 @@ class Resque
 	 * @param string $queue The name of the queue to add the job to.
 	 * @param array $item Job description as an array to be JSON encoded.
 	 */
-	public static function push($queue, $item)
+	public static function push($queue, $item, $method='rpush')
 	{
-		self::redis()->sadd('queues', $queue);
-		self::redis()->rpush('queue:' . $queue, json_encode($item));
+        if (is_array($queue)) {
+            if (!isset($queue['strategy'])) {
+                $queueStrategy = 'shortest';
+            } else {
+                $queueStrategy = $queue['strategy'];
+            }
+            switch ($queueStrategy) {
+                case 'shortest':
+
+                case 'random':
+                default:
+                   $destinationQueue = array_rand($queue['candidates']);
+            }
+        } else {
+            $destinationQueue = $queue;
+        }
+        self::redis()->sadd('queues', $destinationQueue);
+        call_user_func([self::queue(),'push'], $destinationQueue, $item, $method);
 	}
 
 	/**
@@ -133,8 +172,7 @@ class Resque
 	 */
 	public static function unshift($queue, $item)
 	{
-		self::redis()->sadd('queues', $queue);
-		self::redis()->lpush('queue:' . $queue, json_encode($item));
+        call_user_func([self::queue(), 'unshift'], $queue, $item);
 	}
 
 	/**
@@ -146,12 +184,12 @@ class Resque
 	 */
 	public static function pop($queue)
 	{
-		$item = self::redis()->lpop('queue:' . $queue);
-		if(!$item) {
+        $item = call_user_func([self::queue(),'pop'], $queue);
+		if(empty($item)) {
 			return;
 		}
 
-		return json_decode($item, true);
+		return $item;
 	}
 
 	/**
@@ -163,7 +201,7 @@ class Resque
 	 */
 	public static function size($queue)
 	{
-		return self::redis()->llen('queue:' . $queue);
+		return call_user_func([self::queue(), 'size'], $queue);
 	}
 
 	/**
@@ -176,10 +214,10 @@ class Resque
 	 *
 	 * @return string
 	 */
-	public static function enqueue($queue, $class, $args = null, $trackStatus = false, $runFirst = false)
+	public static function enqueue($queue, $class, $args = null, $trackStatus = false, $runNext = false)
 	{
 		require_once dirname(__FILE__) . '/Resque/Job.php';
-		$result = Resque_Job::create($queue, $class, $args, $trackStatus, $runFirst);
+		$result = Resque_Job::create($queue, $class, $args, $trackStatus, $runNext);
 		if ($result) {
 			Resque_Event::trigger('afterEnqueue', array(
 				'class' => $class,
@@ -210,7 +248,7 @@ class Resque
 	 */
 	public static function queues()
 	{
-		$queues = self::redis()->smembers('queues');
+        $queues = self::redis()->smembers('queues');
 		if(!is_array($queues)) {
 			$queues = array();
 		}

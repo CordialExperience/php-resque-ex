@@ -51,11 +51,11 @@ class Resque_Job
 	 * @param string $class The name of the class that contains the code to execute the job.
 	 * @param array $args Any optional arguments that should be passed when the job is executed.
 	 * @param boolean $monitor Set to true to be able to monitor the status of a job.
-     * @param boolean $runFirst Optional whether to place the job on queue at beginning
+     * @param boolean $runNext Optional whether to place the job on queue at beginning
 	 *
 	 * @return string
 	 */
-	public static function create($queue, $class, $args = null, $monitor = false, $runFirst=false)
+	public static function create($queue, $class, $args = null, $monitor = false, $runNext=false)
 	{
 		if ($args !== null && !is_array($args)) {
 			throw new InvalidArgumentException(
@@ -71,7 +71,7 @@ class Resque_Job
 		} else {
 			$id = md5(uniqid('', true));
 		}
-        if ($runFirst) {
+        if ($runNext) {
             Resque::unshift($queue, array(
                 'class'	=> $class,
                 'args'	=> array($args),
