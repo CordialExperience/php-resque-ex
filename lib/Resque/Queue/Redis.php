@@ -16,7 +16,7 @@ class Resque_Queue_Redis implements Resque_Queue_Interface
         } elseif ($method == 'first') {
             $redisMethod = 'lpush';
         }
-        Resque::redis()->$method('queue:' . $queue, json_encode($item));
+        Resque::redis()->$redisMethod('queue:' . $queue, json_encode($item));
 	}
 
 	/**
@@ -28,7 +28,7 @@ class Resque_Queue_Redis implements Resque_Queue_Interface
 	 */
 	public static function unshift($queue, $item)
 	{
-        Resque::push($queue, $item, 'first');
+        self::push($queue, $item, 'first');
 	}
 
 	/**
@@ -58,5 +58,19 @@ class Resque_Queue_Redis implements Resque_Queue_Interface
 	public static function size($queue)
 	{
 		return Resque::redis()->llen('queue:' . $queue);
+	}
+
+	/**
+	 * Get an array of all known queues.
+	 *
+	 * @return array Array of queues.
+	 */
+	public static function queues()
+	{
+        $queues = Resque::redis()->smembers('queues');
+		if(!is_array($queues)) {
+			$queues = array();
+		}
+		return $queues;
 	}
 }

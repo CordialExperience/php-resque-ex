@@ -45,7 +45,8 @@ class Resque
 	 */
 	protected static $pid = null;
 
-    protected static $queueType;
+    protected static $queueTypes = ['Resque_Queue_Redis'];
+    protected static $queues = [];
 
 	/**
 	 * Given a host/port combination separated by a colon, set it as
@@ -64,25 +65,25 @@ class Resque
 		self::$password 	 = $password;
 	}
 
-    public static function setQueueType($type=null)
-    {
-        if (empty($type)) {
-            self::$queueType = 'Resque_Queue_Redis';
-        } elseif (class_exists('Resque_Queue_' . $type) && 'Resque_Queue_' . $type instanceof Resque_Queue_Interface) {
-            self::$queueType = 'Resque_Queue_' . $type;
-        } elseif (class_exists($type) && $type instanceof Resque_Queue_Interface) {
-            self::$queueType = $type;
+    public static function addQueueType($type) {
+        if (class_exists($type) && in_array('Resque_Queue_Interface', class_implements($type, true))) {
+            array_push(self::$queueTypes, $type);
         } else {
-            throw new \Exception('QueueType not valid');
+            throw new \Exception('QueueType does not exist or does not implement Resque_Queue_Interface');
         }
     }
 
-    public static function queue()
+    public static function isRedisQueue($queue)
     {
-        if (empty(self::$queueType)) {
-            self::setQueueType();
+        return (self::queueClass($queue) === 'Resque_Queue_Redis');
+    }
+
+    public static function queueClass($queue)
+    {
+        if (!isset(self::$queues[$queue])) {
+            self::queues();
         }
-        return self::$queueType;
+        return self::$queues[$queue];
     }
 
 	/**
@@ -160,7 +161,7 @@ class Resque
             $destinationQueue = $queue;
         }
         self::redis()->sadd('queues', $destinationQueue);
-        call_user_func([self::queue(),'push'], $destinationQueue, $item, $method);
+        call_user_func([self::queueClass($queue),'push'], $destinationQueue, $item, $method);
 	}
 
 	/**
@@ -172,7 +173,7 @@ class Resque
 	 */
 	public static function unshift($queue, $item)
 	{
-        call_user_func([self::queue(), 'unshift'], $queue, $item);
+        call_user_func([self::queueClass($queue), 'unshift'], $queue, $item);
 	}
 
 	/**
@@ -184,7 +185,7 @@ class Resque
 	 */
 	public static function pop($queue)
 	{
-        $item = call_user_func([self::queue(),'pop'], $queue);
+        $item = call_user_func([self::queueClass($queue),'pop'], $queue);
 		if(empty($item)) {
 			return;
 		}
@@ -201,7 +202,7 @@ class Resque
 	 */
 	public static function size($queue)
 	{
-		return call_user_func([self::queue(), 'size'], $queue);
+		return call_user_func([self::queueClass($queue), 'size'], $queue);
 	}
 
 	/**
@@ -248,10 +249,14 @@ class Resque
 	 */
 	public static function queues()
 	{
-        $queues = self::redis()->smembers('queues');
-		if(!is_array($queues)) {
-			$queues = array();
-		}
-		return $queues;
+        $allQueues = [];
+        foreach (self::$queueTypes as $queueType) {
+            $queues = $queueType::queues();
+            if (is_array($queues)) {
+                $allQueues = array_merge($allQueues, array_combine($queues, array_fill(0, count($queues), $queueType)));
+            }
+        }
+        self::$queues = $allQueues;
+		return array_keys($allQueues);
 	}
 }
